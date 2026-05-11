@@ -23,7 +23,7 @@ import requests as http_requests
 # ─────────────────────────────────────────────
 #  CONFIG — copy from your bot.py
 # ─────────────────────────────────────────────
-BOT_TOKEN          = os.getenv("DISCORD_TOKEN", "MTQ5MzA3MzM3MjIwNzM4Njc0Nw.GRaN5Q.VlpuMe1aAiWAdLVVGSWYXYgCWxD-38nOvA9Pe4")
+BOT_TOKEN          = os.getenv("DISCORD_TOKEN", "YOUR_BOT_TOKEN_HERE")
 GUILD_ID           = 1102370626796261498
 CAPTAIN_ROLE_ID    = 1218334912214597662
 MEMBER_ROLE_ID     = 1218334966341959750
