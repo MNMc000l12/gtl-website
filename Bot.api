@@ -1,29 +1,20 @@
 """
 GTL Bot API — bot_api.py
-Run this ALONGSIDE your main bot.py (in a second terminal or as a background thread).
-
-INSTALL:   pip install flask flask-cors
-RUN:       python bot_api.py
-
-This exposes a local REST API on port 5000 that the website calls.
-The website sends requests → this script reads/writes teams.json, suspensions.json
-and calls the Discord API directly to assign roles.
+Deploy this to Railway. Set DISCORD_TOKEN in Railway's Variables tab.
 """
 
 import json
 import os
 import uuid
-import asyncio
-import threading
 from datetime import datetime, timezone
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests as http_requests
 
 # ─────────────────────────────────────────────
-#  CONFIG — copy from your bot.py
+#  CONFIG
 # ─────────────────────────────────────────────
-BOT_TOKEN          = os.getenv("DISCORD_TOKEN", "YOUR_BOT_TOKEN_HERE")
+BOT_TOKEN          = os.getenv("DISCORD_TOKEN", "")
 GUILD_ID           = 1102370626796261498
 CAPTAIN_ROLE_ID    = 1218334912214597662
 MEMBER_ROLE_ID     = 1218334966341959750
@@ -31,22 +22,12 @@ OFFICIAL_ROLE_ID   = 1500218938074595430
 TRANSACTIONS_ID    = 1102370627601576064
 NEW_TEAMS_ID       = 1118652509356036187
 
-const CONFIG = {
-  DISCORD_CLIENT_ID: '779805628804890644',        // ← your real client ID
-  REDIRECT_URI: 'https://gtl-website-production.up.railway.app/',  // ← your actual site URL
-  API_BASE: 'https://gtl-website-733kdc025-mnmkuhl12-5311s-projects.vercel.app/',    // ← ngrok or your server URL
-  OWNER_ID: '779805628804890644',
-};
-
 TEAMS_FILE         = "teams.json"
 SUSPENSIONS_FILE   = "suspensions.json"
 SCRIMS_FILE        = "scrims.json"
 MAX_TEAM_SIZE      = 25
 
-# The GTL Owner Discord user ID — gets all permissions on the site
 OWNER_ID           = 779805628804890644
-
-# Roles that count as staff/mod on the site for permission checks
 MOD_ROLE_IDS       = {1102378131366621185, 1102378601476788224}
 
 # ─────────────────────────────────────────────
@@ -84,7 +65,6 @@ def discord_send_message(channel_id: int, content: str = None, embed: dict = Non
     return r.status_code == 200
 
 def discord_send_dm(user_id: int, embed: dict):
-    # Create DM channel
     r = http_requests.post(
         f"{DISCORD_API}/users/@me/channels",
         headers=HEADERS,
@@ -121,10 +101,10 @@ def save_json(path, data):
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
 
-def load_teams():    return load_json(TEAMS_FILE, {})
-def save_teams(d):   save_json(TEAMS_FILE, d)
-def load_scrims():   return load_json(SCRIMS_FILE, [])
-def save_scrims(d):  save_json(SCRIMS_FILE, d)
+def load_teams():        return load_json(TEAMS_FILE, {})
+def save_teams(d):       save_json(TEAMS_FILE, d)
+def load_scrims():       return load_json(SCRIMS_FILE, [])
+def save_scrims(d):      save_json(SCRIMS_FILE, d)
 def load_suspensions():  return load_json(SUSPENSIONS_FILE, {"players": {}, "teams": {}})
 def save_suspensions(d): save_json(SUSPENSIONS_FILE, d)
 
@@ -146,14 +126,14 @@ def is_captain_or_co(teams, user_id, team_name):
 #  FLASK APP
 # ─────────────────────────────────────────────
 app = Flask(__name__)
-CORS(app, origins=["*"])  # In production, restrict to your site's domain
+CORS(app, origins=["*"])
 
-# ── GET /teams ──────────────────────────────────────────────────────────────
+# ── GET /teams ───────────────────────────────
 @app.route("/teams", methods=["GET"])
 def get_teams():
     return jsonify(load_teams())
 
-# ── POST /teams/create ──────────────────────────────────────────────────────
+# ── POST /teams/create ───────────────────────
 @app.route("/teams/create", methods=["POST"])
 def create_team():
     data     = request.json
@@ -169,7 +149,6 @@ def create_team():
     if not captain_id:
         return jsonify({"error": "Not logged in."}), 401
 
-    # Validate Discord invite
     if team_disc and not (
         team_disc.startswith("https://discord.gg/")
         or team_disc.startswith("https://discord.com/invite/")
@@ -189,7 +168,6 @@ def create_team():
     if existing:
         return jsonify({"error": f"You're already on '{existing}'. Leave it first."}), 409
 
-    # Check member is actually in the guild
     member = discord_get_member(captain_id)
     if not member:
         return jsonify({"error": "You must be in the GTL Discord server to create a team."}), 403
@@ -206,11 +184,9 @@ def create_team():
     }
     save_teams(teams)
 
-    # Assign Discord roles
     discord_add_role(captain_id, MEMBER_ROLE_ID, "Created team via GTL website")
     discord_add_role(captain_id, CAPTAIN_ROLE_ID, "Captain via GTL website")
 
-    # Announce in Discord
     embed = discord_embed(
         "New Team Created!",
         f"**{name}** [{abbr}] has been created by <@{captain_id}>!",
@@ -230,7 +206,7 @@ def create_team():
 
     return jsonify({"success": True, "team": name})
 
-# ── POST /teams/invite ──────────────────────────────────────────────────────
+# ── POST /teams/invite ───────────────────────
 @app.route("/teams/invite", methods=["POST"])
 def invite_player():
     data       = request.json
@@ -255,14 +231,11 @@ def invite_player():
     if get_player_team(teams, target_id):
         return jsonify({"error": "That player is already on a team."}), 409
 
-    # Check target is in guild
     member = discord_get_member(target_id)
     if not member:
         return jsonify({"error": "That user is not in the GTL Discord server."}), 404
 
     abbr = team.get("abbreviation", "?")
-
-    # DM the invite via bot
     embed = discord_embed(
         "Gorilla Tag League — Team Invite!",
         f"You've been invited to join **{team_name}** [{abbr}] by <@{inviter_id}>!\nUse `/checkinvites` in the GTL Discord server to accept or decline.",
@@ -273,7 +246,7 @@ def invite_player():
 
     return jsonify({"success": True})
 
-# ── POST /teams/edit ─────────────────────────────────────────────────────────
+# ── POST /teams/edit ─────────────────────────
 @app.route("/teams/edit", methods=["POST"])
 def edit_team():
     data     = request.json
@@ -317,7 +290,7 @@ def edit_team():
 
     return jsonify({"success": True})
 
-# ── POST /teams/official ─────────────────────────────────────────────────────
+# ── POST /teams/official ─────────────────────
 @app.route("/teams/official", methods=["POST"])
 def make_official():
     data      = request.json
@@ -336,7 +309,6 @@ def make_official():
     teams[team_name]["official"] = True
     save_teams(teams)
 
-    # Grant official role to all members
     for uid in teams[team_name]["members"]:
         discord_add_role(uid, OFFICIAL_ROLE_ID, "Team became official via GTL website")
 
@@ -351,7 +323,7 @@ def make_official():
 
     return jsonify({"success": True})
 
-# ── POST /teams/disband ──────────────────────────────────────────────────────
+# ── POST /teams/disband ──────────────────────
 @app.route("/teams/disband", methods=["POST"])
 def disband_team():
     data      = request.json
@@ -370,7 +342,6 @@ def disband_team():
     del teams[team_name]
     save_teams(teams)
 
-    # Remove roles
     for uid in member_ids:
         discord_remove_role(uid, CAPTAIN_ROLE_ID, "Team disbanded by owner")
         discord_remove_role(uid, MEMBER_ROLE_ID,  "Team disbanded by owner")
@@ -383,17 +354,17 @@ def disband_team():
 
     return jsonify({"success": True})
 
-# ── GET /scrims ──────────────────────────────────────────────────────────────
+# ── GET /scrims ──────────────────────────────
 @app.route("/scrims", methods=["GET"])
 def get_scrims():
     return jsonify(load_scrims())
 
-# ── POST /scrims/create ──────────────────────────────────────────────────────
+# ── POST /scrims/create ──────────────────────
 @app.route("/scrims/create", methods=["POST"])
 def create_scrim():
     data       = request.json
     team_a     = data.get("team_a")
-    opponent   = data.get("opponent")  # None = open request
+    opponent   = data.get("opponent")
     date       = data.get("date")
     time       = data.get("time")
     notes      = data.get("notes","")
@@ -437,7 +408,7 @@ def create_scrim():
 
     return jsonify({"success": True, "scrim": scrim})
 
-# ── POST /scrims/accept ──────────────────────────────────────────────────────
+# ── POST /scrims/accept ──────────────────────
 @app.route("/scrims/accept", methods=["POST"])
 def accept_scrim():
     data     = request.json
@@ -468,12 +439,12 @@ def accept_scrim():
 
     return jsonify({"success": True})
 
-# ── GET /suspensions ─────────────────────────────────────────────────────────
+# ── GET /suspensions ─────────────────────────
 @app.route("/suspensions", methods=["GET"])
 def get_suspensions():
     return jsonify(load_suspensions())
 
-# ── POST /suspensions/unsuspend-player ───────────────────────────────────────
+# ── POST /suspensions/unsuspend-player ───────
 @app.route("/suspensions/unsuspend-player", methods=["POST"])
 def unsuspend_player():
     data     = request.json
@@ -499,7 +470,7 @@ def unsuspend_player():
 
     return jsonify({"success": True})
 
-# ── POST /suspensions/unsuspend-team ─────────────────────────────────────────
+# ── POST /suspensions/unsuspend-team ─────────
 @app.route("/suspensions/unsuspend-team", methods=["POST"])
 def unsuspend_team():
     data      = request.json
@@ -524,7 +495,7 @@ def unsuspend_team():
 
     return jsonify({"success": True})
 
-# ── POST /announce ────────────────────────────────────────────────────────────
+# ── POST /announce ────────────────────────────
 @app.route("/announce", methods=["POST"])
 def announce():
     data    = request.json
@@ -539,15 +510,14 @@ def announce():
 
     channel_map = {
         "transactions": TRANSACTIONS_ID,
-        "new-teams": NEW_TEAMS_ID,
-        # Add more channel IDs here as needed
+        "new-teams":    NEW_TEAMS_ID,
     }
     channel_id = channel_map.get(channel, TRANSACTIONS_ID)
 
     discord_send_message(channel_id, content=message)
     return jsonify({"success": True})
 
-# ── Health check ─────────────────────────────────────────────────────────────
+# ── Health check ──────────────────────────────
 @app.route("/health", methods=["GET"])
 def health():
     teams = load_teams()
@@ -566,10 +536,9 @@ def api_status():
     })
 
 # ─────────────────────────────────────────────
-#  MAIN
+#  MAIN — Railway injects PORT automatically
 # ─────────────────────────────────────────────
 if __name__ == "__main__":
-    print("GTL Bot API running on http://localhost:5000")
-    print("Make sure your bot.py is also running in another terminal.")
-    # Run on 0.0.0.0 so it's reachable if deployed; use 127.0.0.1 for local only
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    port = int(os.environ.get("PORT", 5000))
+    print(f"GTL Bot API running on port {port}")
+    app.run(host="0.0.0.0", port=port, debug=False)
