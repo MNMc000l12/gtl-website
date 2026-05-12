@@ -31,6 +31,13 @@ OFFICIAL_ROLE_ID   = 1500218938074595430
 TRANSACTIONS_ID    = 1102370627601576064
 NEW_TEAMS_ID       = 1118652509356036187
 
+const CONFIG = {
+  DISCORD_CLIENT_ID: '779805628804890644',        // ← your real client ID
+  REDIRECT_URI: 'https://gtl-website-production.up.railway.app/',  // ← your actual site URL
+  API_BASE: 'https://gtl-website-733kdc025-mnmkuhl12-5311s-projects.vercel.app/',    // ← ngrok or your server URL
+  OWNER_ID: '779805628804890644',
+};
+
 TEAMS_FILE         = "teams.json"
 SUSPENSIONS_FILE   = "suspensions.json"
 SCRIMS_FILE        = "scrims.json"
